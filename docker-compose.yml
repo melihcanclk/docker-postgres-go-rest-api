@@ -1,6 +1,7 @@
 version: '3.8'
 services:
   web:
+    tty: true
     build: .
     env_file:
       - .env
@@ -8,9 +9,10 @@ services:
       - 3000:3000
     volumes:
       - .:/usr/src/app
-    command: air buildvcs=false cmd/main.go  -b 0.0.0.0 
+    command: air cmd/main.go -b 0.0.0.0
   db:
     image: postgres:latest
+    restart: always
     environment:
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASSWORD}
@@ -18,7 +20,7 @@ services:
     ports:
       - 5432:5432
     volumes:
-      - postgresdb:/var/lib/postgresql/data
+      - postgres-db:/var/lib/postgresql/data
 
 volumes:
-  postgresdb:
+  postgres-db:
