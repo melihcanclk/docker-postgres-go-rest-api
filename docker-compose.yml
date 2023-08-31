@@ -2,10 +2,23 @@ version: '3.8'
 services:
   web:
     build: .
-    environment:
-      - GOFLAGS=-buildvcs=false
+    env_file:
+      - .env
     ports:
       - 3000:3000
     volumes:
       - .:/usr/src/app
     command: air buildvcs=false cmd/main.go  -b 0.0.0.0 
+  db:
+    image: postgres:latest
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    ports:
+      - 5432:5432
+    volumes:
+      - postgresdb:/var/lib/postgresql/data
+
+volumes:
+  postgresdb:
