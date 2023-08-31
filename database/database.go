@@ -17,6 +17,27 @@ type DBInstance struct {
 
 var DB DBInstance
 
+func DropUnusedColumns(dst interface{}) {
+
+	stmt := &gorm.Statement{DB: DB.Db}
+	stmt.Parse(dst)
+	fields := stmt.Schema.Fields
+	columns, _ := DB.Db.Debug().Migrator().ColumnTypes(dst)
+
+	for i := range columns {
+		found := false
+		for j := range fields {
+			if columns[i].Name() == fields[j].DBName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			DB.Db.Migrator().DropColumn(dst, columns[i].Name())
+		}
+	}
+}
+
 func ConnectDB() {
 	dataSourceName := fmt.Sprintf("host=db user=%s password=%s dbname=%s port=5432 sslmode=disable TimeZone=UTC",
 		os.Getenv("DB_USER"),
@@ -40,6 +61,8 @@ func ConnectDB() {
 	// get models that we'll migrate, if we wanna use multiple migration
 	// we can define var models = []interface{}{&User{}, &Product{}, &Order{}}
 	// then db.Automigrate(models...)
+	// Db.AutoMigrate(&models.Fact{})
+
 	Db.AutoMigrate(&models.Fact{})
 
 	DB = DBInstance{

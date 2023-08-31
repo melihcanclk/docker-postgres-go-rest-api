@@ -4,7 +4,6 @@ import "gorm.io/gorm"
 
 type Fact struct {
 	gorm.Model
-	ID       uint   `gorm:"primaryKey"`
-	Question string `json:"question" gorm:"text; not null; default: null"`
-	Answer   string `json:"answer" gorm:"text; not null; default: null"`
+	Question string `json:"question" gorm:"text; not null; default: null; column:question"`
+	Answer   string `json:"answer" gorm:"text; not null; default: null; column:answer"`
 }
