@@ -110,7 +110,7 @@ func UpdateUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
 	userDTO := convertUserToDTO(user)
-	return c.Status(200).JSON(userDTO)
+	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
 func DeleteUser(c *fiber.Ctx) error {
@@ -118,15 +118,17 @@ func DeleteUser(c *fiber.Ctx) error {
 
 	user := &models.User{}
 
-	result := database.DB.Db.Delete(&user, "id = ?", id)
+	result := database.DB.Db.Find(&user, "id = ?", id)
+
 	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No user with that id exists"})
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-
 	userDTO := convertUserToDTO(user)
-	return c.Status(200).JSON(userDTO)
+	database.DB.Db.Delete(&user, "id = ?", id)
+
+	return c.Status(fiber.StatusOK).JSON(userDTO)
 
 }
 
