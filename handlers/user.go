@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/helpers"
@@ -60,7 +62,52 @@ func GetUser(c *fiber.Ctx) error {
 
 }
 
-// TODO: Update User
+func UpdateUser(c *fiber.Ctx) error {
+	id := c.Params("id")
+	body, user := &dto.UserUpdateBodyEntity{}, &models.User{}
+
+	if err := c.BodyParser(body); err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "Error when parsing body"})
+	}
+	result := database.DB.Db.Find(&user, "id = ?", id)
+
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No user with that id exists"})
+	} else if result.Error != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
+	}
+
+	if body.Username != "" {
+		body.Username = strings.ToLower(body.Username)
+		err := helpers.NormalizeToEnglish(&body.Username)
+		if err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+		}
+		user.Username = body.Username
+
+	}
+	if body.Email != "" {
+		user.Email = body.Email
+	}
+	if body.Password != "" {
+		hashed, err := helpers.HashPassword(body.Password)
+		if err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Error when hashing password", "data": err})
+		}
+		user.Password = hashed
+	}
+
+	result = database.DB.Db.Save(&user)
+
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No user with that id exists"})
+	} else if result.Error != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
+	}
+	userDTO := convertUserToDTO(user)
+	return c.Status(200).JSON(userDTO)
+}
+
 // TODO: Delete User
 // TODO: Login
 // TODO: Refresh token and bearer token implementation

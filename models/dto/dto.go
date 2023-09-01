@@ -13,3 +13,9 @@ type UserDTO struct {
 	Username string
 	Email    string
 }
+
+type UserUpdateBodyEntity struct {
+	Username string
+	Email    string
+	Password string
+}
