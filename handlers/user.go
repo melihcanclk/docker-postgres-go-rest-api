@@ -79,7 +79,7 @@ func UpdateUser(c *fiber.Ctx) error {
 
 	if body.Username != "" {
 		body.Username = strings.ToLower(body.Username)
-		err := helpers.NormalizeToEnglish(&body.Username)
+		err := helpers.IsIncludesNonAscii(&body.Username)
 		if err != nil {
 			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 		}
