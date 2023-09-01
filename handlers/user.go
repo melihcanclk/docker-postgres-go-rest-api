@@ -25,6 +25,12 @@ func CreateUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Something's wrong with your input", "data": err})
 	}
 
+	user.Username = strings.ToLower(user.Username)
+	err := helpers.IsIncludesNonAscii(&user.Username)
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
 	hashed, err := helpers.HashPassword(user.Password)
 	if err != nil {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Error when hashing password", "data": err})
