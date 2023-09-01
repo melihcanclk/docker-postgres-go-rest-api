@@ -114,6 +114,23 @@ func UpdateUser(c *fiber.Ctx) error {
 	return c.Status(200).JSON(userDTO)
 }
 
+func DeleteUser(c *fiber.Ctx) error {
+	id := c.Params("id")
+
+	user := &models.User{}
+
+	result := database.DB.Db.Delete(&user, "id = ?", id)
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No user with that id exists"})
+	} else if result.Error != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
+	}
+
+	userDTO := convertUserToDTO(user)
+	return c.Status(200).JSON(userDTO)
+
+}
+
 // TODO: Delete User
 // TODO: Login
 // TODO: Refresh token and bearer token implementation

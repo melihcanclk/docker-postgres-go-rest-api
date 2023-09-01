@@ -3,8 +3,10 @@ package helpers
 import (
 	"fmt"
 	"net/mail"
+	"unicode"
 
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/text/unicode/norm"
 )
 
 func HashPassword(password string) (string, error) {
@@ -22,11 +24,16 @@ func IsEmailValid(email string) (string, error) {
 	return mail.Address, err
 }
 
-func IsIncludesNonAscii(input *string) error {
-	for _, r := range *input {
-		if r <= 127 {
+func isIncludesNonAscii(input string) error {
+	for _, r := range input {
+		if r > unicode.MaxASCII {
 			return fmt.Errorf("input contains non-ascii characters")
 		}
 	}
 	return nil
+}
+
+func IsIncludesNonAscii(input *string) error {
+	normalized := norm.NFKD.String(*input)
+	return isIncludesNonAscii(normalized)
 }
