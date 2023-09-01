@@ -69,7 +69,7 @@ func GetUser(c *fiber.Ctx) error {
 
 func UpdateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
-	body, user := &dto.UserUpdateBodyEntity{}, &models.User{}
+	body, user := &dto.UserUpdateBodyDTO{}, &models.User{}
 
 	if err := c.BodyParser(body); err != nil {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "Error when parsing body"})
@@ -132,7 +132,6 @@ func DeleteUser(c *fiber.Ctx) error {
 
 }
 
-// TODO: Delete User
 // TODO: Login
 // TODO: Refresh token and bearer token implementation
 // https://github.com/adhtanjung/go_rest_api_fiber/blob/main/handler/handler.go
