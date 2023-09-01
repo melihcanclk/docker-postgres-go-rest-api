@@ -184,6 +184,5 @@ func DeleteUser(c *fiber.Ctx) error {
 
 }
 
-// TODO: Login
 // TODO: Refresh token and bearer token implementation
 // https://github.com/adhtanjung/go_rest_api_fiber/blob/main/handler/handler.go
