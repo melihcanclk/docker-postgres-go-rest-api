@@ -19,3 +19,9 @@ type UserUpdateBodyDTO struct {
 	Email    string
 	Password string
 }
+
+type UserLoginBodyDTO struct {
+	Username string `json:"username,omitempty"` //identity can be username or email, user can login with both
+	Email    string `json:"email,omitempty"`    //identity can be username or email, user can login with both
+	Password string `json:"password" validate:"required"`
+}

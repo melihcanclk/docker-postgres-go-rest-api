@@ -19,9 +19,10 @@ func ValidatePassword(password, hash string) bool {
 	return err == nil
 }
 
-func IsEmailValid(email string) (string, error) {
-	mail, err := mail.ParseAddress(email)
-	return mail.Address, err
+func IsEmailValid(email string) bool {
+	_, err := mail.ParseAddress(email)
+
+	return err == nil
 }
 
 func isIncludesNonAscii(input string) error {

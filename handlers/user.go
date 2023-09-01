@@ -2,8 +2,11 @@ package handlers
 
 import (
 	"strings"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/melihcanclk/docker-postgres-go-rest-api/config"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/helpers"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
@@ -46,7 +49,56 @@ func CreateUser(c *fiber.Ctx) error {
 	}
 	userDTO := convertUserToDTO(user)
 
-	return c.Status(201).JSON(userDTO)
+	return c.Status(fiber.StatusCreated).JSON(userDTO)
+}
+
+func LoginUser(c *fiber.Ctx) error {
+	body := &dto.UserLoginBodyDTO{}
+	user := &models.User{}
+
+	if err := c.BodyParser(body); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Something's wrong with your input", "data": err})
+	}
+
+	// userDTO := convertUserToDTO(user)
+
+	var query string
+	var value string
+	if helpers.IsEmailValid(body.Email) {
+		query = "email"
+		value = body.Email
+	} else {
+		query = "username"
+		value = body.Username
+	}
+
+	result := database.DB.Db.Where(query+" = ?", value).First(&user)
+
+	if result.RowsAffected == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No user with that " + query + " exists"})
+	} else if result.Error != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
+	}
+
+	token := jwt.New(jwt.SigningMethodHS256)
+
+	claims := token.Claims.(jwt.MapClaims)
+	claims["sub"] = value
+	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
+
+	t, err := token.SignedString([]byte(config.Secret))
+	if err != nil {
+		return c.SendStatus(fiber.StatusInternalServerError)
+	}
+
+	userDTO := convertUserToDTO(user)
+
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"status":  "success",
+		"message": "Login Success",
+		"user":    userDTO,
+		"token":   t,
+	})
 }
 
 func GetUser(c *fiber.Ctx) error {
