@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -60,8 +61,6 @@ func LoginUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Something's wrong with your input", "data": err})
 	}
 
-	// userDTO := convertUserToDTO(user)
-
 	var query string
 	var value string
 	if helpers.IsEmailValid(body.Email) {
@@ -71,6 +70,8 @@ func LoginUser(c *fiber.Ctx) error {
 		query = "username"
 		value = body.Username
 	}
+
+	fmt.Println(query, value)
 
 	result := database.DB.Db.Where(query+" = ?", value).First(&user)
 
@@ -83,7 +84,9 @@ func LoginUser(c *fiber.Ctx) error {
 	token := jwt.New(jwt.SigningMethodHS256)
 
 	claims := token.Claims.(jwt.MapClaims)
-	claims["sub"] = value
+	claims["id"] = user.ID
+	claims["email"] = user.Email
+	claims["username"] = user.Username
 	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
 
 	t, err := token.SignedString([]byte(config.Secret))
