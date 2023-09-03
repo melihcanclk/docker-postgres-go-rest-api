@@ -26,7 +26,7 @@ func setupUserRoutes(app *fiber.App) {
 	v1.Post("/register", handlers.CreateUser)
 	v1.Post("/login", handlers.LoginUser)
 	v1.Get("/refresh", handlers.RefreshAccessToken)
-	//TODO: logout
+	v1.Get("/logout", middleware.AuthMiddleware, handlers.LogoutUser)
 
 	users := v1.Group("/users")
 	users.Use(middleware.AuthMiddleware)

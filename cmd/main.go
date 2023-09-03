@@ -9,15 +9,21 @@ import (
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
 )
 
-func main() {
-	database.ConnectDB()
+func initialize(app *fiber.App) {
 
-	app := fiber.New()
+	database.ConnectDB()
+	database.ConnectToRedis()
+
 	app.Use(cors.New())
 	app.Use(logger.New())
 
 	setupFactsRoutes(app)
 	setupUserRoutes(app)
+}
+
+func main() {
+	app := fiber.New()
+	initialize(app)
 
 	app.Use(func(c *fiber.Ctx) error {
 		return c.SendStatus(404) // => 404 "Not Found"

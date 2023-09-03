@@ -6,3 +6,7 @@ type TokenDetails struct {
 	UserID    string
 	ExpiresIn *int64
 }
+
+type ExpiredTokens struct {
+	AccessToken string
+}

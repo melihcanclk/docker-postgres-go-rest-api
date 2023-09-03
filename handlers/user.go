@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -78,7 +79,6 @@ func LoginUser(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
-	fmt.Println("ref2:", config.RefreshTokenExpiredInMinutes)
 	refreshTokenDuration, err := time.ParseDuration(config.RefreshTokenExpiredInMinutes)
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
@@ -89,11 +89,22 @@ func LoginUser(c *fiber.Ctx) error {
 	}
 
 	//TODO: these will be used for redis cache after implementation
-	// ctx := context.TODO()
-	// now := time.Now()
+	ctx := context.TODO()
 
-	accessTokenMaxAge := int(config.AccessTokenMaxAge) * 60
-	fmt.Println("accmax:", accessTokenMaxAge)
+	// save refresh token to redis
+	err = database.RedisClient.Set(ctx, refreshTokenDetails.TokenUuid, user.ID.String(), refreshTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// save access token to redis
+	err = database.RedisClient.Set(ctx, accessTokenDetails.TokenUuid, user.ID.String(), accessTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	accessTokenMaxAge := int(config.AccessTokenMaxAge)
+	expiredDay := time.Now().Add(time.Minute * time.Duration(accessTokenMaxAge))
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "access_token",
@@ -103,22 +114,37 @@ func LoginUser(c *fiber.Ctx) error {
 		Secure:   false,
 		HTTPOnly: true,
 		Domain:   "localhost",
+		Expires:  expiredDay,
 	})
 
-	refreshTokenMaxAge := int(config.RefreshTokenMaxAge) * 60
-	fmt.Println("refmax:", refreshTokenMaxAge)
+	refreshTokenMaxAge := int(config.RefreshTokenMaxAge)
+	expiredDay = time.Now().Add(time.Minute * time.Duration(refreshTokenMaxAge))
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "refresh_token",
 		Value:    *refreshTokenDetails.Token,
 		Path:     "/",
-		MaxAge:   int(config.RefreshTokenMaxAge) * 60,
+		MaxAge:   refreshTokenMaxAge,
 		Secure:   false,
 		HTTPOnly: true,
+		Domain:   "localhost",
+		Expires:  expiredDay,
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "logged_in",
+		Value:    "true",
+		Path:     "/",
+		MaxAge:   accessTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: false,
 		Domain:   "localhost",
 	})
 
 	userDTO := ConvertUserToDTO(user)
+
+	c.Locals("user", userDTO)
+	c.Locals("access_token_uuid", accessTokenDetails.TokenUuid)
 
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
 		"status":       "success",
@@ -126,6 +152,36 @@ func LoginUser(c *fiber.Ctx) error {
 		"user":         userDTO,
 		"access_token": accessTokenDetails.Token,
 	})
+}
+
+func LogoutUser(c *fiber.Ctx) error {
+	// get token uuid from context
+	tokenUuid, ok := c.Locals("access_token_uuid").(string)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "fail", "message": "Could not get token uuid from context"})
+	}
+
+	// delete access token from redis
+	ctx := context.TODO()
+
+	err := database.RedisClient.Del(ctx, tokenUuid).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// delete access token from cookie
+	c.Cookie(&fiber.Cookie{
+		Name:  "access_token",
+		Value: "",
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:  "logged_in",
+		Value: "false",
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Successfully logged out"})
+
 }
 
 func GetUser(c *fiber.Ctx) error {
@@ -142,7 +198,7 @@ func GetUser(c *fiber.Ctx) error {
 	}
 	userDTO := ConvertUserToDTO(user)
 
-	return c.Status(200).JSON(userDTO)
+	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
 func UpdateUser(c *fiber.Ctx) error {
@@ -229,8 +285,16 @@ func RefreshAccessToken(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
 
-	var user models.User
-	err = database.DB.Db.First(&user, "id = ?", tokenClaims.UserID).Error
+	// get user from redis
+	ctx := context.TODO()
+	userID, err := database.RedisClient.Get(ctx, tokenClaims.TokenUuid).Result()
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// get user from database
+	user := &models.User{}
+	err = database.DB.Db.Find(&user, "id = ?", userID).Error
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -245,11 +309,20 @@ func RefreshAccessToken(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
+
 	accessTokenDetails, err := helpers.GenerateJWTToken(user.ID.String(), &accessTokenDuration, config.AccessTokenPrivateKey)
 	if err != nil {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
-	accessTokenMaxAge := int(config.AccessTokenMaxAge) * 60
+
+	// save access token to redis
+	err = database.RedisClient.Set(ctx, accessTokenDetails.TokenUuid, user.ID, accessTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	accessTokenMaxAge := int(config.AccessTokenMaxAge)
+	expiredDay := time.Now().Add(time.Minute * time.Duration(accessTokenMaxAge))
 
 	c.Cookie(&fiber.Cookie{
 		Name:     "access_token",
@@ -259,6 +332,7 @@ func RefreshAccessToken(c *fiber.Ctx) error {
 		Secure:   false,
 		HTTPOnly: true,
 		Domain:   "localhost",
+		Expires:  expiredDay,
 	})
 
 	c.Cookie(&fiber.Cookie{
@@ -271,7 +345,11 @@ func RefreshAccessToken(c *fiber.Ctx) error {
 		Domain:   "localhost",
 	})
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "access_token": accessTokenDetails.Token})
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"status":       "success",
+		"message":      "Access token refreshed",
+		"access_token": accessTokenDetails.Token,
+	})
 }
 
 func ConvertUserToDTO(val *models.User) *dto.UserDTO {
