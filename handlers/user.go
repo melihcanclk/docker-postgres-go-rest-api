@@ -1,25 +1,19 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
 	"strings"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v4"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/config"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/helpers"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models/dto"
+	"gorm.io/gorm"
 )
-
-func convertUserToDTO(val *models.User) *dto.UserDTO {
-	return &dto.UserDTO{
-		ID:       val.ID,
-		Username: val.Username,
-		Email:    val.Email,
-	}
-}
 
 func CreateUser(c *fiber.Ctx) error {
 	user := new(models.User)
@@ -47,7 +41,7 @@ func CreateUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := convertUserToDTO(user)
+	userDTO := ConvertUserToDTO(user)
 
 	return c.Status(fiber.StatusCreated).JSON(userDTO)
 }
@@ -60,8 +54,6 @@ func LoginUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": "Something's wrong with your input", "data": err})
 	}
 
-	// userDTO := convertUserToDTO(user)
-
 	var query string
 	var value string
 	if helpers.IsEmailValid(body.Email) {
@@ -71,7 +63,6 @@ func LoginUser(c *fiber.Ctx) error {
 		query = "username"
 		value = body.Username
 	}
-
 	result := database.DB.Db.Where(query+" = ?", value).First(&user)
 
 	if result.RowsAffected == 0 {
@@ -80,25 +71,128 @@ func LoginUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
 
-	token := jwt.New(jwt.SigningMethodHS256)
-
-	claims := token.Claims.(jwt.MapClaims)
-	claims["sub"] = value
-	claims["exp"] = time.Now().Add(time.Hour * 72).Unix()
-
-	t, err := token.SignedString([]byte(config.Secret))
+	accessTokenDuration, err := time.ParseDuration(config.AccessTokenExpiredInMinutes)
 	if err != nil {
-		return c.SendStatus(fiber.StatusInternalServerError)
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+	accessTokenDetails, err := helpers.GenerateJWTToken(user.ID.String(), &accessTokenDuration, config.AccessTokenPrivateKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+	refreshTokenDuration, err := time.ParseDuration(config.RefreshTokenExpiredInMinutes)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+	refreshTokenDetails, err := helpers.GenerateJWTToken(user.ID.String(), &refreshTokenDuration, config.RefreshTokenPrivateKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
 
-	userDTO := convertUserToDTO(user)
+	//TODO: these will be used for redis cache after implementation
+	ctx := context.TODO()
+
+	// save refresh token to redis
+	err = database.RedisClient.Set(ctx, refreshTokenDetails.TokenUuid, user.ID.String(), refreshTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// save access token to redis
+	err = database.RedisClient.Set(ctx, accessTokenDetails.TokenUuid, user.ID.String(), accessTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	accessTokenMaxAge := int(config.AccessTokenMaxAge)
+	expiredDay := time.Now().Add(time.Minute * time.Duration(accessTokenMaxAge))
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    *accessTokenDetails.Token,
+		Path:     "/",
+		MaxAge:   accessTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: true,
+		Domain:   "localhost",
+		Expires:  expiredDay,
+	})
+
+	refreshTokenMaxAge := int(config.RefreshTokenMaxAge)
+	expiredDay = time.Now().Add(time.Minute * time.Duration(refreshTokenMaxAge))
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "refresh_token",
+		Value:    *refreshTokenDetails.Token,
+		Path:     "/",
+		MaxAge:   refreshTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: true,
+		Domain:   "localhost",
+		Expires:  expiredDay,
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "logged_in",
+		Value:    "true",
+		Path:     "/",
+		MaxAge:   accessTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: false,
+		Domain:   "localhost",
+	})
+
+	userDTO := ConvertUserToDTO(user)
+
+	c.Locals("user", userDTO)
+	c.Locals("access_token_uuid", accessTokenDetails.TokenUuid)
 
 	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
-		"status":  "success",
-		"message": "Login Success",
-		"user":    userDTO,
-		"token":   t,
+		"status":       "success",
+		"message":      "Login Success",
+		"user":         userDTO,
+		"access_token": accessTokenDetails.Token,
 	})
+}
+
+func LogoutUser(c *fiber.Ctx) error {
+
+	refresh_token := c.Cookies("refresh_token")
+
+	if refresh_token == "" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": "Token is invalid or session has expired"})
+	}
+
+	ctx := context.TODO()
+
+	tokenClaims, err := helpers.ValidateToken(refresh_token, config.RefreshTokenPublicKey)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	access_token_uuid := c.Locals("access_token_uuid").(string)
+	_, err = database.RedisClient.Del(ctx, tokenClaims.TokenUuid, access_token_uuid).Result()
+	if err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// delete access token from cookie
+	c.Cookie(&fiber.Cookie{
+		Name:  "access_token",
+		Value: "",
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:  "refresh_token",
+		Value: "",
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:  "logged_in",
+		Value: "false",
+	})
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "message": "Successfully logged out"})
+
 }
 
 func GetUser(c *fiber.Ctx) error {
@@ -113,10 +207,9 @@ func GetUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := convertUserToDTO(user)
+	userDTO := ConvertUserToDTO(user)
 
-	return c.Status(200).JSON(userDTO)
-
+	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
 func UpdateUser(c *fiber.Ctx) error {
@@ -161,7 +254,7 @@ func UpdateUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := convertUserToDTO(user)
+	userDTO := ConvertUserToDTO(user)
 	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
@@ -177,12 +270,103 @@ func DeleteUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := convertUserToDTO(user)
+	userDTO := ConvertUserToDTO(user)
 	database.DB.Db.Delete(&user, "id = ?", id)
 
 	return c.Status(fiber.StatusOK).JSON(userDTO)
-
 }
 
-// TODO: Refresh token and bearer token implementation
-// https://github.com/adhtanjung/go_rest_api_fiber/blob/main/handler/handler.go
+func GetMe(c *fiber.Ctx) error {
+	user := c.Locals("user").(*dto.UserDTO)
+	fmt.Println(user)
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "data": fiber.Map{"user": user}})
+}
+
+func RefreshAccessToken(c *fiber.Ctx) error {
+	message := "could not refresh access token"
+
+	refresh_token := c.Cookies("refresh_token")
+
+	if refresh_token == "" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": message})
+	}
+	tokenClaims, err := helpers.ValidateToken(refresh_token, config.RefreshTokenPublicKey)
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// get user from redis
+	ctx := context.TODO()
+	userID, err := database.RedisClient.Get(ctx, tokenClaims.TokenUuid).Result()
+	if err != nil {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// get user from database
+	user := &models.User{}
+	err = database.DB.Db.Find(&user, "id = ?", userID).Error
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": "the user belonging to this token no logger exists"})
+		} else {
+			return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+
+		}
+	}
+
+	accessTokenDuration, err := time.ParseDuration(config.AccessTokenExpiredInMinutes)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	accessTokenDetails, err := helpers.GenerateJWTToken(user.ID.String(), &accessTokenDuration, config.AccessTokenPrivateKey)
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	// save access token to redis
+	err = database.RedisClient.Set(ctx, accessTokenDetails.TokenUuid, user.ID, accessTokenDuration).Err()
+	if err != nil {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	accessTokenMaxAge := int(config.AccessTokenMaxAge)
+	expiredDay := time.Now().Add(time.Minute * time.Duration(accessTokenMaxAge))
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "access_token",
+		Value:    *accessTokenDetails.Token,
+		Path:     "/",
+		MaxAge:   accessTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: true,
+		Domain:   "localhost",
+		Expires:  expiredDay,
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:     "logged_in",
+		Value:    "true",
+		Path:     "/",
+		MaxAge:   accessTokenMaxAge,
+		Secure:   false,
+		HTTPOnly: false,
+		Domain:   "localhost",
+	})
+
+	return c.Status(fiber.StatusAccepted).JSON(fiber.Map{
+		"status":       "success",
+		"message":      "Access token refreshed",
+		"access_token": accessTokenDetails.Token,
+	})
+}
+
+func ConvertUserToDTO(val *models.User) *dto.UserDTO {
+	return &dto.UserDTO{
+		ID:       val.ID,
+		Username: val.Username,
+		Email:    val.Email,
+	}
+}

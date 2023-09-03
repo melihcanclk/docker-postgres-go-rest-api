@@ -63,7 +63,7 @@ func ConnectDB() {
 	// then db.Automigrate(models...)
 	// Db.AutoMigrate(&models.Fact{})
 
-	Db.AutoMigrate(&models.Fact{}, &models.User{})
+	Db.AutoMigrate(&models.Fact{}, &models.User{}, &models.ExpiredTokens{})
 
 	DB = DBInstance{
 		Db,

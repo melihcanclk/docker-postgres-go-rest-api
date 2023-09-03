@@ -1,10 +1,15 @@
 package helpers
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/mail"
+	"time"
 	"unicode"
 
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/google/uuid"
+	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/text/unicode/norm"
 )
@@ -37,4 +42,73 @@ func isIncludesNonAscii(input string) error {
 func IsIncludesNonAscii(input *string) error {
 	normalized := norm.NFKD.String(*input)
 	return isIncludesNonAscii(normalized)
+}
+
+func ValidateToken(token string, publicKey string) (*models.TokenDetails, error) {
+	decodedPublicKey, err := base64.StdEncoding.DecodeString(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode: %w", err)
+	}
+
+	key, err := jwt.ParseRSAPublicKeyFromPEM(decodedPublicKey)
+
+	if err != nil {
+		return nil, fmt.Errorf("validate: parse key: %w", err)
+	}
+
+	parsedToken, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodRSA); !ok {
+			return nil, fmt.Errorf("unexpected method: %s", t.Header["alg"])
+		}
+		return key, nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("validate: %w", err)
+	}
+
+	claims, ok := parsedToken.Claims.(jwt.MapClaims)
+	if !ok || !parsedToken.Valid {
+		return nil, fmt.Errorf("validate: invalid token")
+	}
+
+	// get token uuid
+	tokenUUID := fmt.Sprint(claims["token_uuid"])
+	return &models.TokenDetails{
+		TokenUuid: tokenUUID,
+		UserID:    fmt.Sprint(claims["sub"]),
+	}, nil
+}
+func GenerateJWTToken(id string, ttl *time.Duration, privateKey string) (*models.TokenDetails, error) {
+	now := time.Now().UTC()
+	td := &models.TokenDetails{
+		ExpiresIn: new(int64),
+		Token:     new(string),
+	}
+	*td.ExpiresIn = now.Add(*ttl).Unix()
+	td.TokenUuid = uuid.New().String()
+	td.UserID = id
+
+	decodedPrivateKey, err := base64.StdEncoding.DecodeString(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("could not decode token private key: %w", err)
+	}
+	key, err := jwt.ParseRSAPrivateKeyFromPEM(decodedPrivateKey)
+	if err != nil {
+		return nil, fmt.Errorf("create: parse token private key: %w", err)
+	}
+
+	atClaims := make(jwt.MapClaims)
+	atClaims["sub"] = td.UserID
+	atClaims["token_uuid"] = td.TokenUuid
+	atClaims["exp"] = td.ExpiresIn
+	atClaims["iat"] = now.Unix()
+	atClaims["nbf"] = now.Unix()
+
+	*td.Token, err = jwt.NewWithClaims(jwt.SigningMethodRS256, atClaims).SignedString(key)
+	if err != nil {
+		return nil, fmt.Errorf("create: sign token: %w", err)
+	}
+
+	return td, nil
 }
