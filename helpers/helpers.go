@@ -72,8 +72,10 @@ func ValidateToken(token string, publicKey string) (*models.TokenDetails, error)
 		return nil, fmt.Errorf("validate: invalid token")
 	}
 
+	// get token uuid
+	tokenUUID := fmt.Sprint(claims["token_uuid"])
 	return &models.TokenDetails{
-		TokenUuid: fmt.Sprint(claims["token_uuid"]),
+		TokenUuid: tokenUUID,
 		UserID:    fmt.Sprint(claims["sub"]),
 	}, nil
 }
@@ -84,7 +86,6 @@ func GenerateJWTToken(id string, ttl *time.Duration, privateKey string) (*models
 		Token:     new(string),
 	}
 	*td.ExpiresIn = now.Add(*ttl).Unix()
-	fmt.Println(*ttl)
 	td.TokenUuid = uuid.New().String()
 	td.UserID = id
 

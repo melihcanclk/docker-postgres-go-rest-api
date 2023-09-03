@@ -36,19 +36,20 @@ func ListFacts(c *fiber.Ctx) error {
 }
 
 func GetSingleFact(c *fiber.Ctx) error {
-	facts := []models.Fact{}
+	fact := &models.Fact{}
 	id := c.Params("id")
 
-	result := database.DB.Db.Find(&facts, "id = ?", id)
+	// get first fact matching the id
+	result := database.DB.Db.Find(&fact, "id = ?", id)
 
 	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No data with that Id exists"})
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	factsDTO := convertFactsToDTO(facts)
+	factsDTO := convertFactToDTO(fact)
 
-	return c.Status(200).JSON(factsDTO[0])
+	return c.Status(200).JSON(factsDTO)
 }
 
 func CreateFacts(c *fiber.Ctx) error {
