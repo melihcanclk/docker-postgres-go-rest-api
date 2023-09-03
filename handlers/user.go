@@ -155,23 +155,34 @@ func LoginUser(c *fiber.Ctx) error {
 }
 
 func LogoutUser(c *fiber.Ctx) error {
-	// get token uuid from context
-	tokenUuid, ok := c.Locals("access_token_uuid").(string)
-	if !ok {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "fail", "message": "Could not get token uuid from context"})
+
+	refresh_token := c.Cookies("refresh_token")
+
+	if refresh_token == "" {
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": "Token is invalid or session has expired"})
 	}
 
-	// delete access token from redis
 	ctx := context.TODO()
 
-	err := database.RedisClient.Del(ctx, tokenUuid).Err()
+	tokenClaims, err := helpers.ValidateToken(refresh_token, config.RefreshTokenPublicKey)
 	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"status": "fail", "message": err.Error()})
+	}
+
+	access_token_uuid := c.Locals("access_token_uuid").(string)
+	_, err = database.RedisClient.Del(ctx, tokenClaims.TokenUuid, access_token_uuid).Result()
+	if err != nil {
+		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
 
 	// delete access token from cookie
 	c.Cookie(&fiber.Cookie{
 		Name:  "access_token",
+		Value: "",
+	})
+
+	c.Cookie(&fiber.Cookie{
+		Name:  "refresh_token",
 		Value: "",
 	})
 
