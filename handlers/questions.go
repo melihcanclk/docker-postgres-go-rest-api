@@ -104,11 +104,16 @@ func CreateQuestion(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": err})
 	}
 
-	result := database.DB.Db.Preload("Answers").Create(&question)
+	// get current user id
+	user := c.Locals("user").(*dto.UserDTO)
 
-	if result.RowsAffected == 0 {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No data with that Id exists"})
-	} else if result.Error != nil {
+	// set the user id
+	question.UserID = user.ID
+
+	// create the fact
+	result := database.DB.Db.Create(&question)
+
+	if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
 
