@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/swagger"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/handlers"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/middleware"
 )
@@ -35,4 +36,21 @@ func setupUserRoutes(app *fiber.App) {
 	users.Put("/:id", handlers.UpdateUser)
 	users.Delete("/:id", handlers.DeleteUser)
 
+}
+
+func setupSwaggerRoutes(app *fiber.App) {
+
+	swaggerRoute := app.Group("/swagger")
+	// swaggerRoute.Get("/*", swagger.HandlerDefault) // default
+
+	swaggerRoute.Get("/*", swagger.New(swagger.Config{ // custom
+		URL:          "/swagger/doc.json",
+		DeepLinking:  false,
+		DocExpansion: "none",
+		OAuth: &swagger.OAuthConfig{
+			AppName:  "OAuth Provider",
+			ClientId: "21bb4edc-05a7-4afc-86f1-2e151e4ba6e2",
+		},
+		OAuth2RedirectUrl: "http://localhost:3000/swagger/oauth2-redirect.html",
+	}))
 }

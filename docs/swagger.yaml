@@ -1,0 +1,347 @@
+basePath: /
+definitions:
+  dto.FactsDTO:
+    properties:
+      answer:
+        type: string
+      id:
+        type: integer
+      question:
+        type: string
+    type: object
+  dto.UserDTO:
+    properties:
+      email:
+        type: string
+      id:
+        type: string
+      username:
+        type: string
+    type: object
+  dto.UserLoginBodyDTO:
+    properties:
+      email:
+        description: identity can be username or email, user can login with both
+        type: string
+      password:
+        type: string
+      username:
+        description: identity can be username or email, user can login with both
+        type: string
+    required:
+    - password
+    type: object
+  dto.UserUpdateBodyDTO:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:3000
+info:
+  contact:
+    email: fiber@swagger.io
+    name: API Support
+  description: This is a sample swagger for Fiber
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Fiber Example API
+  version: "1.0"
+paths:
+  /api/v1/facts:
+    get:
+      consumes:
+      - application/json
+      description: List all facts
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/dto.FactsDTO'
+            type: array
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: get all facts
+      tags:
+      - Facts
+    post:
+      consumes:
+      - application/json
+      description: Create a fact
+      parameters:
+      - description: Question
+        in: body
+        name: question
+        required: true
+        schema:
+          type: string
+      - description: Answer
+        in: body
+        name: answer
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.FactsDTO'
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: create a fact
+      tags:
+      - Facts
+  /api/v1/facts/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a fact
+      parameters:
+      - description: Fact ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.FactsDTO'
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: delete a fact
+      tags:
+      - Facts
+    get:
+      consumes:
+      - application/json
+      description: Get a single fact
+      parameters:
+      - description: Fact ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.FactsDTO'
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: get a single fact
+      tags:
+      - Facts
+  /auth/v1/login:
+    post:
+      consumes:
+      - application/json
+      description: Login a user, returns access token, refresh token as cookies, user
+        data and access token as json
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserLoginBodyDTO'
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: login a user
+      tags:
+      - Users
+  /auth/v1/logout:
+    get:
+      consumes:
+      - application/json
+      description: Logout a user, deletes refresh token from redis and access token
+        from cookie
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: logout a user
+      tags:
+      - Users
+  /auth/v1/refresh:
+    get:
+      consumes:
+      - application/json
+      description: Refresh access token
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: refresh access token
+      tags:
+      - Users
+  /auth/v1/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user
+      parameters:
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserLoginBodyDTO'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: create a new user
+      tags:
+      - Users
+  /auth/v1/users/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a user with given id
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: delete a user
+      tags:
+      - Users
+    get:
+      consumes:
+      - application/json
+      description: Get a user with given id
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: get a user
+      tags:
+      - Users
+    put:
+      consumes:
+      - application/json
+      description: Update a user with given id
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/dto.UserUpdateBodyDTO'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: update a user
+      tags:
+      - Users
+  /auth/v1/users/me:
+    get:
+      consumes:
+      - application/json
+      description: Get current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/dto.UserDTO'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: get current user
+      tags:
+      - Users
+swagger: "2.0"

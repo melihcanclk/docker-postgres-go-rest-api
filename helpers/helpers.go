@@ -10,6 +10,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
+	"github.com/melihcanclk/docker-postgres-go-rest-api/models/dto"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/text/unicode/norm"
 )
@@ -111,4 +112,12 @@ func GenerateJWTToken(id string, ttl *time.Duration, privateKey string) (*models
 	}
 
 	return td, nil
+}
+
+func ConvertUserToDTO(val *models.User) *dto.UserDTO {
+	return &dto.UserDTO{
+		ID:       val.ID,
+		Username: val.Username,
+		Email:    val.Email,
+	}
 }

@@ -8,7 +8,6 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/config"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
-	"github.com/melihcanclk/docker-postgres-go-rest-api/handlers"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/helpers"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
 	"github.com/redis/go-redis/v9"
@@ -48,7 +47,7 @@ func AuthMiddleware(c *fiber.Ctx) error {
 	}
 
 	fmt.Println("Token UUID: ", tokenClaims.TokenUuid)
-	c.Locals("user", handlers.ConvertUserToDTO(&user))
+	c.Locals("user", helpers.ConvertUserToDTO(&user))
 	c.Locals("access_token_uuid", tokenClaims.TokenUuid)
 
 	return c.Next()

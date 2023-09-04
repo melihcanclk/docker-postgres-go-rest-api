@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
+	_ "github.com/melihcanclk/docker-postgres-go-rest-api/docs"
 )
 
 func initialize(app *fiber.App) {
@@ -16,16 +17,37 @@ func initialize(app *fiber.App) {
 
 	app.Use(cors.New())
 	app.Use(logger.New())
+	// access control
+	app.Use(func(c *fiber.Ctx) error {
+		c.Set("Access-Control-Allow-Origin", "*")
+		c.Set("Access-Control-Allow-Headers", "*")
+		c.Set("Access-Control-Allow-Methods", "*")
+		return c.Next()
+	})
+
+	setupFactsRoutes(app)
+	setupUserRoutes(app)
+	setupSwaggerRoutes(app)
+
 	app.All("*", func(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(&fiber.Map{
 			"status":  "fail",
 			"message": "No Such Query",
 		})
 	})
-	setupFactsRoutes(app)
-	setupUserRoutes(app)
+
 }
 
+// @title Fiber Example API
+// @version 1.0
+// @description This is a sample swagger for Fiber
+// @termsOfService http://swagger.io/terms/
+// @contact.name API Support
+// @contact.email fiber@swagger.io
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+// @host localhost:3000
+// @BasePath /
 func main() {
 	app := fiber.New()
 	initialize(app)

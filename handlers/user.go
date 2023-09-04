@@ -15,6 +15,15 @@ import (
 	"gorm.io/gorm"
 )
 
+// @Description Create a new user
+// @Summary create a new user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param user body dto.UserLoginBodyDTO true "User"
+// @Success 201 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/register [post]
 func CreateUser(c *fiber.Ctx) error {
 	user := new(models.User)
 
@@ -41,11 +50,20 @@ func CreateUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := ConvertUserToDTO(user)
+	userDTO := helpers.ConvertUserToDTO(user)
 
 	return c.Status(fiber.StatusCreated).JSON(userDTO)
 }
 
+// @Description Login a user, returns access token, refresh token as cookies, user data and access token as json
+// @Summary login a user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param user body dto.UserLoginBodyDTO true "User"
+// @Success 202 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/login [post]
 func LoginUser(c *fiber.Ctx) error {
 	body := &dto.UserLoginBodyDTO{}
 	user := &models.User{}
@@ -88,7 +106,6 @@ func LoginUser(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{"status": "fail", "message": err.Error()})
 	}
 
-	//TODO: these will be used for redis cache after implementation
 	ctx := context.TODO()
 
 	// save refresh token to redis
@@ -141,7 +158,7 @@ func LoginUser(c *fiber.Ctx) error {
 		Domain:   "localhost",
 	})
 
-	userDTO := ConvertUserToDTO(user)
+	userDTO := helpers.ConvertUserToDTO(user)
 
 	c.Locals("user", userDTO)
 	c.Locals("access_token_uuid", accessTokenDetails.TokenUuid)
@@ -154,6 +171,14 @@ func LoginUser(c *fiber.Ctx) error {
 	})
 }
 
+// @Description Logout a user, deletes refresh token from redis and access token from cookie
+// @Summary logout a user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Success 200 {object} string
+// @Failure 400 {object} string
+// @Router /auth/v1/logout [get]
 func LogoutUser(c *fiber.Ctx) error {
 
 	refresh_token := c.Cookies("refresh_token")
@@ -195,6 +220,15 @@ func LogoutUser(c *fiber.Ctx) error {
 
 }
 
+// @Description Get a user with given id
+// @Summary get a user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/users/{id} [get]
 func GetUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -207,11 +241,21 @@ func GetUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := ConvertUserToDTO(user)
+	userDTO := helpers.ConvertUserToDTO(user)
 
 	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
+// @Description Update a user with given id
+// @Summary update a user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "User ID"
+// @Param user body dto.UserUpdateBodyDTO true "User"
+// @Success 200 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/users/{id} [put]
 func UpdateUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 	body, user := &dto.UserUpdateBodyDTO{}, &models.User{}
@@ -254,10 +298,19 @@ func UpdateUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := ConvertUserToDTO(user)
+	userDTO := helpers.ConvertUserToDTO(user)
 	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
+// @Description Delete a user with given id
+// @Summary delete a user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/users/{id} [delete]
 func DeleteUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
@@ -270,12 +323,20 @@ func DeleteUser(c *fiber.Ctx) error {
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	userDTO := ConvertUserToDTO(user)
+	userDTO := helpers.ConvertUserToDTO(user)
 	database.DB.Db.Delete(&user, "id = ?", id)
 
 	return c.Status(fiber.StatusOK).JSON(userDTO)
 }
 
+// @Description Get current user
+// @Summary get current user
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Success 200 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/users/me [get]
 func GetMe(c *fiber.Ctx) error {
 	user := c.Locals("user").(*dto.UserDTO)
 	fmt.Println(user)
@@ -283,6 +344,14 @@ func GetMe(c *fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "success", "data": fiber.Map{"user": user}})
 }
 
+// @Description Refresh access token
+// @Summary refresh access token
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Success 202 {object} dto.UserDTO
+// @Failure 400 {object} string
+// @Router /auth/v1/refresh [get]
 func RefreshAccessToken(c *fiber.Ctx) error {
 	message := "could not refresh access token"
 
@@ -361,12 +430,4 @@ func RefreshAccessToken(c *fiber.Ctx) error {
 		"message":      "Access token refreshed",
 		"access_token": accessTokenDetails.Token,
 	})
-}
-
-func ConvertUserToDTO(val *models.User) *dto.UserDTO {
-	return &dto.UserDTO{
-		ID:       val.ID,
-		Username: val.Username,
-		Email:    val.Email,
-	}
 }
