@@ -2,25 +2,39 @@ package handlers
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/melihcanclk/docker-postgres-go-rest-api/business"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/database"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models"
 	"github.com/melihcanclk/docker-postgres-go-rest-api/models/dto"
 )
 
-func convertFactToDTO(val *models.Fact) *dto.FactsDTO {
+func convertAnswerToDTO(val *[]models.Answer) []dto.AnswersDTO {
+	// traverse through the answers
+	answersDTO := []dto.AnswersDTO{}
+	for _, val := range *val {
+		answersDTO = append(answersDTO, dto.AnswersDTO{
+			ID:         int(val.ID),
+			AnswerText: val.AnswerText,
+			IsTrue:     val.IsTrue,
+		})
+	}
+	return answersDTO
+}
+
+func convertQuestionToDTO(val *models.Question) *dto.FactsDTO {
 	return &dto.FactsDTO{
-		ID:       int(val.ID),
-		Question: val.Question,
-		Answer:   val.Answer,
+		ID:              int(val.ID),
+		QuestionContent: val.QuestionContent,
+		Answers:         convertAnswerToDTO(&val.Answers),
 	}
 }
 
-func convertFactsToDTO(facts []models.Fact) []dto.FactsDTO {
+func convertQuestionsToDTO(facts []models.Question) []dto.FactsDTO {
 
 	factsDTO := []dto.FactsDTO{}
 
 	for _, val := range facts {
-		dto := convertFactToDTO(&val)
+		dto := convertQuestionToDTO(&val)
 		factsDTO = append(factsDTO, *dto)
 	}
 
@@ -35,12 +49,12 @@ func convertFactsToDTO(facts []models.Fact) []dto.FactsDTO {
 // @Success 200 {object} []dto.FactsDTO
 // @Failure 404 {object} string
 // @Router /api/v1/facts [get]
-func ListFacts(c *fiber.Ctx) error {
-	facts := []models.Fact{}
+func ListQuestions(c *fiber.Ctx) error {
+	questions := []models.Question{}
 
-	database.DB.Db.Find(&facts)
-	factsDTO := convertFactsToDTO(facts)
-	return c.Status(200).JSON(factsDTO)
+	database.DB.Db.Preload("Answers").Find(&questions)
+	factsDTO := convertQuestionsToDTO(questions)
+	return c.Status(fiber.StatusOK).JSON(factsDTO)
 }
 
 // @Description Get a single fact
@@ -52,24 +66,24 @@ func ListFacts(c *fiber.Ctx) error {
 // @Success 200 {object} dto.FactsDTO
 // @Failure 404 {object} string
 // @Router /api/v1/facts/{id} [get]
-func GetSingleFact(c *fiber.Ctx) error {
-	fact := &models.Fact{}
+func GetSingleQuestion(c *fiber.Ctx) error {
+	fact := &models.Question{}
 	id := c.Params("id")
 
 	// get first fact matching the id
-	result := database.DB.Db.Find(&fact, "id = ?", id)
+	result := database.DB.Db.Preload("Answers").Find(&fact, "id = ?", id)
 
 	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No data with that Id exists"})
 	} else if result.Error != nil {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
-	factsDTO := convertFactToDTO(fact)
+	factsDTO := convertQuestionToDTO(fact)
 
-	return c.Status(200).JSON(factsDTO)
+	return c.Status(fiber.StatusOK).JSON(factsDTO)
 }
 
-// @Description Create a fact
+// @Description Create a
 // @Summary create a fact
 // @Tags Facts
 // @Accept json
@@ -79,15 +93,18 @@ func GetSingleFact(c *fiber.Ctx) error {
 // @Success 200 {object} dto.FactsDTO
 // @Failure 404 {object} string
 // @Router /api/v1/facts [post]
-func CreateFacts(c *fiber.Ctx) error {
-	fact := new(models.Fact)
+func CreateQuestion(c *fiber.Ctx) error {
+	question := new(models.Question)
 
-	if err := c.BodyParser(fact); err != nil {
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"message": err,
-		})
+	if err := c.BodyParser(question); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": err})
 	}
-	result := database.DB.Db.Create(&fact)
+
+	if err := business.CheckQuestion(c, question); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"status": "error", "message": err})
+	}
+
+	result := database.DB.Db.Preload("Answers").Create(&question)
 
 	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No data with that Id exists"})
@@ -95,9 +112,9 @@ func CreateFacts(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
 
-	dto := convertFactToDTO(fact)
+	dto := convertQuestionToDTO(question)
 
-	return c.Status(200).JSON(dto)
+	return c.Status(fiber.StatusOK).JSON(dto)
 
 }
 
@@ -110,11 +127,11 @@ func CreateFacts(c *fiber.Ctx) error {
 // @Success 200 {object} dto.FactsDTO
 // @Failure 404 {object} string
 // @Router /api/v1/facts/{id} [delete]
-func DeleteFact(c *fiber.Ctx) error {
-	factId := c.Params("id")
+func DeleteQuestion(c *fiber.Ctx) error {
+	questionId := c.Params("id")
 
-	fact := &models.Fact{}
-	database.DB.Db.Find(fact, "id = ?", factId)
+	fact := &models.Question{}
+	database.DB.Db.Preload("Answers").Find(fact, "id = ?", questionId)
 	if fact.ID == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
 			"status":  "fail",
@@ -122,8 +139,8 @@ func DeleteFact(c *fiber.Ctx) error {
 		})
 	}
 
-	dto := convertFactToDTO(fact)
-	result := database.DB.Db.Delete(fact, "id = ?", factId)
+	dto := convertQuestionToDTO(fact)
+	result := database.DB.Db.Select("Answers").Delete(&fact, "id = ?", questionId)
 
 	if result.RowsAffected == 0 {
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"status": "fail", "message": "No data with that Id exists"})
@@ -131,6 +148,6 @@ func DeleteFact(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusBadGateway).JSON(fiber.Map{"status": "error", "message": result.Error})
 	}
 
-	return c.Status(200).JSON(dto)
+	return c.Status(fiber.StatusOK).JSON(dto)
 
 }

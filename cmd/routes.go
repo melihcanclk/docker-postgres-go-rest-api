@@ -14,10 +14,12 @@ func setupFactsRoutes(app *fiber.App) {
 
 	v1.Use(middleware.AuthMiddleware)
 
-	v1.Get("/facts", handlers.ListFacts)
-	v1.Get("/facts/:id", handlers.GetSingleFact)
-	v1.Post("/facts", handlers.CreateFacts)
-	v1.Delete("/facts/:id", handlers.DeleteFact)
+	questions := v1.Group("/questions")
+
+	questions.Get("/", handlers.ListQuestions)
+	questions.Get("/:id", handlers.GetSingleQuestion)
+	questions.Post("/", handlers.CreateQuestion)
+	questions.Delete("/:id", handlers.DeleteQuestion)
 }
 
 func setupUserRoutes(app *fiber.App) {

@@ -16,15 +16,16 @@ import (
 
 func AuthMiddleware(c *fiber.Ctx) error {
 	var access_token string
-	authorization := c.Get("Authorization")
 
-	if strings.HasPrefix(authorization, "Bearer ") {
-		access_token = strings.TrimPrefix(authorization, "Bearer ")
-	} else if c.Cookies("access_token") != "" {
+	if c.Cookies("access_token") != "" {
 		access_token = c.Cookies("access_token")
-	}
-
-	if access_token == "" {
+	} else if c.Get("Authorization") != "" {
+		bearerToken := c.Get("Authorization")
+		splitted := strings.Split(bearerToken, " ")
+		if len(splitted) == 2 {
+			access_token = splitted[1]
+		}
+	} else {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"status": "fail", "message": "You are not logged in"})
 	}
 

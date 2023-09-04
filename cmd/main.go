@@ -15,15 +15,12 @@ func initialize(app *fiber.App) {
 	database.ConnectDB()
 	database.ConnectToRedis()
 
-	app.Use(cors.New())
+	app.Use(cors.New(cors.Config{
+		AllowOrigins:     "*",
+		AllowHeaders:     "Origin, Content-Type, Accept",
+		AllowCredentials: true,
+	}))
 	app.Use(logger.New())
-	// access control
-	app.Use(func(c *fiber.Ctx) error {
-		c.Set("Access-Control-Allow-Origin", "*")
-		c.Set("Access-Control-Allow-Headers", "*")
-		c.Set("Access-Control-Allow-Methods", "*")
-		return c.Next()
-	})
 
 	setupFactsRoutes(app)
 	setupUserRoutes(app)
