@@ -16,7 +16,12 @@ func initialize(app *fiber.App) {
 
 	app.Use(cors.New())
 	app.Use(logger.New())
-
+	app.All("*", func(c *fiber.Ctx) error {
+		return c.Status(fiber.StatusBadRequest).JSON(&fiber.Map{
+			"status":  "fail",
+			"message": "No Such Query",
+		})
+	})
 	setupFactsRoutes(app)
 	setupUserRoutes(app)
 }
@@ -24,10 +29,6 @@ func initialize(app *fiber.App) {
 func main() {
 	app := fiber.New()
 	initialize(app)
-
-	app.Use(func(c *fiber.Ctx) error {
-		return c.SendStatus(404) // => 404 "Not Found"
-	})
 
 	app.Listen(fmt.Sprintf(":%d", 3000))
 }
